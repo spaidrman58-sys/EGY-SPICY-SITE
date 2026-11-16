@@ -1,0 +1,188 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EGY SPICY | لوحة الإدارة</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#09090c;color:white;font-family:Arial,sans-serif;padding:20px}
+main{max-width:900px;margin:35px auto}
+h1{color:#f12b35;text-align:center}
+.card{background:#17171d;border:1px solid #303039;border-radius:15px;padding:22px;margin:15px 0}
+input{width:100%;padding:13px;margin:8px 0;background:#09090c;color:white;border:1px solid #444;border-radius:9px}
+button{padding:11px 17px;border:0;border-radius:8px;background:#f12b35;color:white;font-weight:bold;margin:5px;cursor:pointer}
+button:disabled{opacity:.5}
+.secondary{background:#444}
+.accept{background:#167b3b}
+.reject{background:#a51e29}
+.muted{color:#aaa}
+.hidden{display:none}
+.status{padding:5px 10px;border-radius:8px;background:#333;display:inline-block}
+</style>
+</head>
+<body>
+<main>
+<h1>EGY SPICY 🌶️</h1>
+<p style="text-align:center">لوحة تحكم الإدارة</p>
+
+<div class="card" id="loginBox">
+<h2>تسجيل دخول الإدارة</h2>
+<input id="email" type="email" placeholder="الإيميل">
+<input id="password" type="password" placeholder="كلمة المرور">
+<button id="loginBtn">تسجيل الدخول</button>
+<p id="loginMessage" class="muted"></p>
+</div>
+
+<div id="dashboard" class="hidden">
+<div class="card">
+<h2>طلبات الانضمام</h2>
+<button id="refreshBtn">تحديث الطلبات</button>
+<button id="logoutBtn" class="secondary">تسجيل الخروج</button>
+<p id="message" class="muted"></p>
+</div>
+<div id="applications"></div>
+</div>
+</main>
+
+<script>
+const SUPABASE_URL="https://einrkaqozklqyxuqqbzc.supabase.co";
+const SUPABASE_KEY="sb_publishable_vE14A1t3j1Gw0eEPh6kpxg_FWyp76jG";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const loginBox=document.getElementById("loginBox");
+const dashboard=document.getElementById("dashboard");
+const loginMessage=document.getElementById("loginMessage");
+const message=document.getElementById("message");
+const applications=document.getElementById("applications");
+
+document.getElementById("loginBtn").onclick=login;
+document.getElementById("refreshBtn").onclick=loadApplications;
+document.getElementById("logoutBtn").onclick=logout;
+
+async function login(){
+ const email=document.getElementById("email").value.trim();
+ const password=document.getElementById("password").value;
+ const btn=document.getElementById("loginBtn");
+
+ if(!email||!password){
+  loginMessage.textContent="اكتب الإيميل وكلمة المرور";
+  return;
+ }
+
+ btn.disabled=true;
+ loginMessage.textContent="جارٍ تسجيل الدخول...";
+
+ const {error}=await db.auth.signInWithPassword({email,password});
+ btn.disabled=false;
+
+ if(error){
+  loginMessage.textContent="فشل تسجيل الدخول. راجع البيانات.";
+  return;
+ }
+
+ loginBox.classList.add("hidden");
+ dashboard.classList.remove("hidden");
+ await loadApplications();
+}
+
+async function loadApplications(){
+ message.textContent="جارٍ تحميل الطلبات...";
+ applications.replaceChildren();
+
+ const {data,error}=await db
+  .from("clan_applications")
+  .select("id,player_name,play_style,experience,status,created_at")
+  .order("created_at",{ascending:false});
+
+ if(error){
+  message.textContent="تعذر تحميل الطلبات. تأكد من صلاحيات الإدارة.";
+  return;
+ }
+
+ message.textContent="عدد الطلبات: "+data.length;
+
+ if(data.length===0){
+  applications.textContent="لا توجد طلبات حتى الآن.";
+  return;
+ }
+
+ data.forEach(item=>{
+  const card=document.createElement("div");
+  card.className="card";
+
+  const name=document.createElement("h3");
+  name.textContent=item.player_name;
+
+  const style=document.createElement("p");
+  style.textContent="أسلوب اللعب: "+item.play_style;
+
+  const experience=document.createElement("p");
+  experience.textContent="معلومات إضافية: "+(item.experience||"لا يوجد");
+
+  const status=document.createElement("p");
+  status.className="status";
+  status.textContent="الحالة: "+item.status;
+
+  const date=document.createElement("p");
+  date.className="muted";
+  date.textContent=new Date(item.created_at).toLocaleString("ar-EG");
+
+  card.append(name,style,experience,status,date);
+
+  if(item.status==="pending"){
+   const accept=document.createElement("button");
+   accept.className="accept";
+   accept.textContent="قبول الطلب";
+   accept.onclick=()=>changeStatus(item.id,"accepted",accept);
+
+   const reject=document.createElement("button");
+   reject.className="reject";
+   reject.textContent="رفض الطلب";
+   reject.onclick=()=>changeStatus(item.id,"rejected",reject);
+
+   card.append(accept,reject);
+  }
+
+  applications.append(card);
+ });
+}
+
+async function changeStatus(id,status,button){
+ button.disabled=true;
+
+ const {error}=await db
+  .from("clan_applications")
+  .update({status})
+  .eq("id",id);
+
+ if(error){
+  alert("تعذر تحديث الطلب. راجع صلاحيات الإدارة.");
+  button.disabled=false;
+  return;
+ }
+
+ await loadApplications();
+}
+
+async function logout(){
+ await db.auth.signOut();
+ dashboard.classList.add("hidden");
+ loginBox.classList.remove("hidden");
+ applications.replaceChildren();
+ document.getElementById("password").value="";
+ loginMessage.textContent="تم تسجيل الخروج";
+}
+
+db.auth.getSession().then(async({data})=>{
+ if(data.session){
+  loginBox.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+  await loadApplications();
+ }
+});
+</script>
+</body>
+</html>
